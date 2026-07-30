@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import jakarta.validation.Valid;
 
 @RestController
 @RequiredArgsConstructor
@@ -18,7 +19,7 @@ public class ResumeController {
 
     @PostMapping
     public ResumeUploadResponse uploadResume(
-            @ModelAttribute ResumeUploadRequest request) {
+            @Valid @ModelAttribute ResumeUploadRequest request) {
 
         return resumeService.uploadResume(request);
     }
