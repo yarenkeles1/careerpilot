@@ -4,6 +4,10 @@ import com.yaren.careerpilot.dto.request.ResumeUploadRequest;
 import com.yaren.careerpilot.dto.response.ResumeUploadResponse;
 import com.yaren.careerpilot.entity.Resume;
 import com.yaren.careerpilot.enums.ResumeStatus;
+import com.yaren.careerpilot.exception.EmptyFileException;
+import com.yaren.careerpilot.exception.FileTooLargeException;
+import com.yaren.careerpilot.exception.InvalidFileExtensionException;
+import com.yaren.careerpilot.exception.InvalidContentTypeException;
 import com.yaren.careerpilot.repository.ResumeRepository;
 import com.yaren.careerpilot.service.ResumeService;
 import lombok.RequiredArgsConstructor;
@@ -69,7 +73,7 @@ public class ResumeServiceImpl implements ResumeService {
     private void validateFileIsNotEmpty(MultipartFile file){
 
         if (file == null || file.isEmpty()) {
-            throw new IllegalArgumentException("Resume file is required.");
+            throw new EmptyFileException("Resume file is required.");
         }
     }
 
@@ -94,7 +98,7 @@ public class ResumeServiceImpl implements ResumeService {
         }
 
         if(!valid){
-            throw new IllegalArgumentException(
+            throw new InvalidFileExtensionException(
                     "Only PDF and DOCX files are allowed.");
         }
     }
@@ -118,7 +122,7 @@ public class ResumeServiceImpl implements ResumeService {
         }
 
         if (!valid) {
-            throw new IllegalArgumentException(
+            throw new InvalidContentTypeException(
                     "Only PDF and DOCX files are allowed.");
         }
     }
@@ -128,7 +132,7 @@ public class ResumeServiceImpl implements ResumeService {
         long fileSize = file.getSize();
 
         if(fileSize > MAX_FILE_SIZE){
-            throw new IllegalArgumentException(
+            throw new FileTooLargeException(
                     "Maximum file size is 5 MB.");
         }
     }
