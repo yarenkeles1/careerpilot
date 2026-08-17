@@ -1,13 +1,11 @@
 package com.yaren.careerpilot.service.impl;
 
 import com.yaren.careerpilot.dto.request.ResumeUploadRequest;
+import com.yaren.careerpilot.dto.response.ResumeResponse;
 import com.yaren.careerpilot.dto.response.ResumeUploadResponse;
 import com.yaren.careerpilot.entity.Resume;
 import com.yaren.careerpilot.enums.ResumeStatus;
-import com.yaren.careerpilot.exception.EmptyFileException;
-import com.yaren.careerpilot.exception.FileTooLargeException;
-import com.yaren.careerpilot.exception.InvalidFileExtensionException;
-import com.yaren.careerpilot.exception.InvalidContentTypeException;
+import com.yaren.careerpilot.exception.*;
 import com.yaren.careerpilot.repository.ResumeRepository;
 import com.yaren.careerpilot.service.ResumeService;
 import lombok.RequiredArgsConstructor;
@@ -20,6 +18,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -199,6 +198,121 @@ public class ResumeServiceImpl implements ResumeService {
         response.setStatus(resume.getStatus());
 
         return response;
+    }
+
+    private ResumeResponse mapToResponse(Resume resume) {
+
+        ResumeResponse response = new ResumeResponse();
+
+        response.setId(resume.getId());
+
+        response.setFileName(resume.getFileName());
+
+        response.setStatus(resume.getStatus());
+
+        response.setUploadedAt(resume.getUploadedAt());
+
+        return response;
+    }
+
+    @Override
+    public List<ResumeResponse> getAllResumes() {
+
+        return resumeRepository.findAll()
+                .stream()
+                .map(this::mapToResponse)
+                .toList();
+    }
+
+    @Override
+    public List<ResumeResponse> searchResumes(String keyword) {
+
+        return resumeRepository
+                .findByFileNameContainingIgnoreCase(keyword)
+                .stream()
+                .map(this::mapToResponse)
+                .toList();
+    }
+
+    @Override
+    public ResumeResponse getResumeById(Long id) {
+
+        Optional<Resume> optional = resumeRepository.findById(id);
+
+        if (optional.isEmpty()) {
+            throw new ResumeNotFoundException("Resume not found.");
+        }
+
+        Resume resume = optional.get();
+
+        return mapToResponse(resume);
+    }
+
+    @Override
+    public ResumeResponse updateResume(Long id,
+                                       ResumeUploadRequest request) {
+
+        Optional<Resume> optional =
+                resumeRepository.findById(id);
+
+        if (optional.isEmpty()) {
+            throw new ResumeNotFoundException("Resume not found.");
+        }
+
+        Resume resume = optional.get();
+
+        MultipartFile file = request.getFile();
+
+        validateFile(file);
+
+        String oldFilePath = resume.getFilePath();
+
+        String newFilePath = saveFile(file);
+
+        resume.setFileName(file.getOriginalFilename());
+        resume.setFilePath(newFilePath);
+        resume.setStatus(ResumeStatus.UPLOADED);
+
+        Resume updatedResume =
+                resumeRepository.save(resume);
+
+        deleteFile(oldFilePath);
+
+        return mapToResponse(updatedResume);
+    }
+
+    @Override
+    public void deleteResume(Long id) {
+
+        Optional<Resume> optional =
+                resumeRepository.findById(id);
+
+        if (optional.isEmpty()) {
+            throw new ResumeNotFoundException("Resume not found.");
+        }
+
+        Resume resume = optional.get();
+
+        String filePath = resume.getFilePath();
+
+        resumeRepository.delete(resume);
+
+        deleteFile(filePath);
+    }
+
+    private void deleteFile(String filePath) {
+
+        Path path = Paths.get(filePath);
+
+        try {
+
+            Files.deleteIfExists(path);
+
+        } catch (IOException e) {
+
+            throw new RuntimeException(
+                    "Failed to delete old resume.", e);
+        }
     }
 }
 
