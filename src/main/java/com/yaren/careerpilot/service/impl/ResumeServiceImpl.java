@@ -7,21 +7,19 @@ import com.yaren.careerpilot.entity.Resume;
 import com.yaren.careerpilot.enums.ResumeStatus;
 import com.yaren.careerpilot.exception.*;
 import com.yaren.careerpilot.repository.ResumeRepository;
+import com.yaren.careerpilot.service.FileStorageService;
 import com.yaren.careerpilot.service.ResumeService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
-import java.util.UUID;
 
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class ResumeServiceImpl implements ResumeService {
 
@@ -39,7 +37,7 @@ public class ResumeServiceImpl implements ResumeService {
     private static final long MAX_FILE_SIZE =
             5 * 1024 * 1024;
 
-    private static final String UPLOAD_DIRECTORY = "uploads";
+    private final FileStorageService fileStorageService;
 
     @Override
     public ResumeUploadResponse uploadResume(ResumeUploadRequest request) {
@@ -48,7 +46,7 @@ public class ResumeServiceImpl implements ResumeService {
 
         validateFile(file);
 
-        String filePath = saveFile(file);
+        String filePath = fileStorageService.store(file);
 
         Resume resume = createResume(file, filePath);
 
@@ -134,44 +132,6 @@ public class ResumeServiceImpl implements ResumeService {
             throw new FileTooLargeException(
                     "Maximum file size is 5 MB.");
         }
-    }
-
-    private String saveFile(MultipartFile file){
-
-        Path uploadPath = Paths.get(UPLOAD_DIRECTORY);
-
-        String originalFileName = file.getOriginalFilename();
-
-        String extension = getFileExtension(originalFileName);
-
-        String uuid = UUID.randomUUID().toString();
-
-        String uniqueFileName = uuid + extension;
-
-        Path targetPath = uploadPath.resolve(uniqueFileName);
-
-        try{
-            Files.createDirectories(uploadPath);
-
-            Files.copy(file.getInputStream(), targetPath);
-
-            return targetPath.toString();
-
-        }catch (IOException e){
-
-            throw new RuntimeException("Failed to save resume.", e);
-        }
-    }
-
-    private String getFileExtension(String fileName) {
-
-        int lastDot = fileName.lastIndexOf(".");
-
-        if (lastDot == -1) {
-            throw new IllegalArgumentException("File extension is missing.");
-        }
-
-        return fileName.substring(lastDot);
     }
 
     private Resume createResume(MultipartFile file, String filePath) {
@@ -267,7 +227,7 @@ public class ResumeServiceImpl implements ResumeService {
 
         String oldFilePath = resume.getFilePath();
 
-        String newFilePath = saveFile(file);
+        String newFilePath = fileStorageService.store(file);
 
         resume.setFileName(file.getOriginalFilename());
         resume.setFilePath(newFilePath);
@@ -276,7 +236,13 @@ public class ResumeServiceImpl implements ResumeService {
         Resume updatedResume =
                 resumeRepository.save(resume);
 
-        deleteFile(oldFilePath);
+        try {
+            fileStorageService.delete(oldFilePath);
+
+        } catch (FileStorageException e) {
+            log.warn("Failed to delete old physical file for resume id={}, path={}",
+                    id, oldFilePath, e);
+        }
 
         return mapToResponse(updatedResume);
     }
@@ -297,22 +263,12 @@ public class ResumeServiceImpl implements ResumeService {
 
         resumeRepository.delete(resume);
 
-        deleteFile(filePath);
-    }
-
-    private void deleteFile(String filePath) {
-
-        Path path = Paths.get(filePath);
-
         try {
+            fileStorageService.delete(filePath);
 
-            Files.deleteIfExists(path);
-
-        } catch (IOException e) {
-
-            throw new RuntimeException(
-                    "Failed to delete old resume.", e);
+        } catch (FileStorageException e) {
+            log.warn("Failed to delete physical file for resume id={}, path={}",
+                    id, filePath, e);
         }
     }
 }
-
