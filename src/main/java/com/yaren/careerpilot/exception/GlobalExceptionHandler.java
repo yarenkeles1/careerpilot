@@ -53,6 +53,40 @@ public class GlobalExceptionHandler {
                 .body(response);
     }
 
+    @ExceptionHandler(EmailAlreadyExistsException.class)
+    public ResponseEntity<ErrorResponse> handleEmailAlreadyExistsException(
+            EmailAlreadyExistsException exception,
+            HttpServletRequest request) {
+
+        ErrorResponse response = new ErrorResponse(
+                LocalDateTime.now(),
+                HttpStatus.CONFLICT.value(),
+                exception.getMessage(),
+                request.getRequestURI()
+        );
+
+        return ResponseEntity
+                .status(HttpStatus.CONFLICT)
+                .body(response);
+    }
+
+    @ExceptionHandler(org.springframework.security.authentication.BadCredentialsException.class)
+    public ResponseEntity<ErrorResponse> handleBadCredentialsException(
+            org.springframework.security.authentication.BadCredentialsException exception,
+            HttpServletRequest request) {
+
+        ErrorResponse response = new ErrorResponse(
+                LocalDateTime.now(),
+                HttpStatus.UNAUTHORIZED.value(),
+                "Email or password is incorrect.",
+                request.getRequestURI()
+        );
+
+        return ResponseEntity
+                .status(HttpStatus.UNAUTHORIZED)
+                .body(response);
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleUnexpectedException(
             Exception exception,

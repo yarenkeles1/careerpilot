@@ -12,18 +12,6 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * ResumeRepository için JPA slice testi.
- *
- * @DataJpaTest:
- *   - Sadece JPA katmanını yükler (Controller, Service yüklenmez → hızlı)
- *   - H2 in-memory DB otomatik olarak kullanılır (Docker gerekmez)
- *   - Her test metodundan sonra transaction rollback yapar (testler birbirini etkilemez)
- *
- * H2 neden yeterli?
- *   findByFileNameContainingIgnoreCase → JPQL: LOWER(fileName) LIKE LOWER('%keyword%')
- *   Bu sorgu H2 ve PostgreSQL'de aynı davranır — Docker uyumsuzluğu geçici workaround.
- */
 @DataJpaTest
 class ResumeRepositoryTest {
 

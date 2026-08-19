@@ -4,13 +4,16 @@ import com.yaren.careerpilot.dto.request.ResumeUploadRequest;
 import com.yaren.careerpilot.dto.response.ResumeResponse;
 import com.yaren.careerpilot.dto.response.ResumeUploadResponse;
 import com.yaren.careerpilot.entity.Resume;
+import com.yaren.careerpilot.entity.User;
 import com.yaren.careerpilot.enums.ResumeStatus;
 import com.yaren.careerpilot.exception.*;
 import com.yaren.careerpilot.repository.ResumeRepository;
+import com.yaren.careerpilot.repository.UserRepository;
 import com.yaren.careerpilot.service.FileStorageService;
 import com.yaren.careerpilot.service.ResumeService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -24,6 +27,8 @@ import java.util.Optional;
 public class ResumeServiceImpl implements ResumeService {
 
     private final ResumeRepository resumeRepository;
+
+    private final UserRepository userRepository;
 
     private static final List<String> ALLOWED_EXTENSIONS =
             List.of(".pdf", ".docx");
@@ -48,7 +53,9 @@ public class ResumeServiceImpl implements ResumeService {
 
         String filePath = fileStorageService.store(file);
 
-        Resume resume = createResume(file, filePath);
+        User user = getCurrentUser();
+
+        Resume resume = createResume(file, filePath, user);
 
         Resume savedResume = resumeRepository.save(resume);
 
@@ -134,7 +141,7 @@ public class ResumeServiceImpl implements ResumeService {
         }
     }
 
-    private Resume createResume(MultipartFile file, String filePath) {
+    private Resume createResume(MultipartFile file, String filePath, User user) {
 
         Resume resume = new Resume();
 
@@ -143,6 +150,8 @@ public class ResumeServiceImpl implements ResumeService {
         resume.setFilePath(filePath);
 
         resume.setStatus(ResumeStatus.UPLOADED);
+
+        resume.setUser(user);
 
         return resume;
     }
@@ -178,7 +187,9 @@ public class ResumeServiceImpl implements ResumeService {
     @Override
     public List<ResumeResponse> getAllResumes() {
 
-        return resumeRepository.findAll()
+        User user = getCurrentUser();
+
+        return resumeRepository.findByUserId(user.getId())
                 .stream()
                 .map(this::mapToResponse)
                 .toList();
@@ -187,8 +198,10 @@ public class ResumeServiceImpl implements ResumeService {
     @Override
     public List<ResumeResponse> searchResumes(String keyword) {
 
+        User user = getCurrentUser();
+
         return resumeRepository
-                .findByFileNameContainingIgnoreCase(keyword)
+                .findByUserIdAndFileNameContainingIgnoreCase(user.getId(), keyword)
                 .stream()
                 .map(this::mapToResponse)
                 .toList();
@@ -197,29 +210,28 @@ public class ResumeServiceImpl implements ResumeService {
     @Override
     public ResumeResponse getResumeById(Long id) {
 
-        Optional<Resume> optional = resumeRepository.findById(id);
+        User user = getCurrentUser();
 
-        if (optional.isEmpty()) {
+        Resume resume = resumeRepository.findById(id)
+                .orElseThrow(() -> new ResumeNotFoundException("Resume not found."));
+
+        if (!resume.getUser().getId().equals(user.getId())) {
             throw new ResumeNotFoundException("Resume not found.");
         }
-
-        Resume resume = optional.get();
-
         return mapToResponse(resume);
     }
 
     @Override
-    public ResumeResponse updateResume(Long id,
-                                       ResumeUploadRequest request) {
+    public ResumeResponse updateResume(Long id, ResumeUploadRequest request) {
 
-        Optional<Resume> optional =
-                resumeRepository.findById(id);
+        User user = getCurrentUser();
 
-        if (optional.isEmpty()) {
+        Resume resume = resumeRepository.findById(id)
+                .orElseThrow(() -> new ResumeNotFoundException("Resume not found."));
+
+        if (!resume.getUser().getId().equals(user.getId())) {
             throw new ResumeNotFoundException("Resume not found.");
         }
-
-        Resume resume = optional.get();
 
         MultipartFile file = request.getFile();
 
@@ -230,45 +242,49 @@ public class ResumeServiceImpl implements ResumeService {
         String newFilePath = fileStorageService.store(file);
 
         resume.setFileName(file.getOriginalFilename());
+
         resume.setFilePath(newFilePath);
+
         resume.setStatus(ResumeStatus.UPLOADED);
 
-        Resume updatedResume =
-                resumeRepository.save(resume);
+        Resume updatedResume = resumeRepository.save(resume);
 
         try {
             fileStorageService.delete(oldFilePath);
-
         } catch (FileStorageException e) {
-            log.warn("Failed to delete old physical file for resume id={}, path={}",
-                    id, oldFilePath, e);
+            log.warn("Failed to delete old physical file for resume id={}, path={}", id, oldFilePath, e);
         }
-
         return mapToResponse(updatedResume);
     }
 
     @Override
     public void deleteResume(Long id) {
+        User user = getCurrentUser();
 
-        Optional<Resume> optional =
-                resumeRepository.findById(id);
+        Resume resume = resumeRepository.findById(id)
+                .orElseThrow(() -> new ResumeNotFoundException("Resume not found."));
 
-        if (optional.isEmpty()) {
+        if (!resume.getUser().getId().equals(user.getId())) {
             throw new ResumeNotFoundException("Resume not found.");
         }
 
-        Resume resume = optional.get();
-
         String filePath = resume.getFilePath();
-
         resumeRepository.delete(resume);
 
         try {
             fileStorageService.delete(filePath);
-
         } catch (FileStorageException e) {
-            log.warn("Failed to delete physical file for resume id={}, path={}",
-                    id, filePath, e);
+            log.warn("Failed to delete physical file for resume id={}, path={}", id, filePath, e);
         }
+    }
+
+    private User getCurrentUser() {
+
+        String email = SecurityContextHolder.getContext()
+                .getAuthentication()
+                .getName();
+
+        return userRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("User not found"));
     }
 }

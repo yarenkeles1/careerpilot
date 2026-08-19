@@ -34,4 +34,7 @@ public class Resume {
     @Enumerated(EnumType.STRING)
     private ResumeStatus status;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;
 }
