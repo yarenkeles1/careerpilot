@@ -49,11 +49,11 @@ public class ResumeServiceImpl implements ResumeService {
 
         MultipartFile file = request.getFile();
 
+        User user = getCurrentUser();
+
         validateFile(file);
 
         String filePath = fileStorageService.store(file);
-
-        User user = getCurrentUser();
 
         Resume resume = createResume(file, filePath, user);
 
@@ -212,12 +212,8 @@ public class ResumeServiceImpl implements ResumeService {
 
         User user = getCurrentUser();
 
-        Resume resume = resumeRepository.findById(id)
-                .orElseThrow(() -> new ResumeNotFoundException("Resume not found."));
+        Resume resume = getOwnedResumeOrThrow(id, user);
 
-        if (!resume.getUser().getId().equals(user.getId())) {
-            throw new ResumeNotFoundException("Resume not found.");
-        }
         return mapToResponse(resume);
     }
 
@@ -226,12 +222,7 @@ public class ResumeServiceImpl implements ResumeService {
 
         User user = getCurrentUser();
 
-        Resume resume = resumeRepository.findById(id)
-                .orElseThrow(() -> new ResumeNotFoundException("Resume not found."));
-
-        if (!resume.getUser().getId().equals(user.getId())) {
-            throw new ResumeNotFoundException("Resume not found.");
-        }
+        Resume resume = getOwnedResumeOrThrow(id, user);
 
         MultipartFile file = request.getFile();
 
@@ -261,12 +252,7 @@ public class ResumeServiceImpl implements ResumeService {
     public void deleteResume(Long id) {
         User user = getCurrentUser();
 
-        Resume resume = resumeRepository.findById(id)
-                .orElseThrow(() -> new ResumeNotFoundException("Resume not found."));
-
-        if (!resume.getUser().getId().equals(user.getId())) {
-            throw new ResumeNotFoundException("Resume not found.");
-        }
+        Resume resume = getOwnedResumeOrThrow(id, user);
 
         String filePath = resume.getFilePath();
         resumeRepository.delete(resume);
@@ -278,6 +264,18 @@ public class ResumeServiceImpl implements ResumeService {
         }
     }
 
+    private Resume getOwnedResumeOrThrow(Long id, User user) {
+
+        Resume resume = resumeRepository.findById(id)
+                .orElseThrow(() -> new ResumeNotFoundException("Resume not found."));
+
+        if (!resume.getUser().getId().equals(user.getId())) {
+            throw new ResumeNotFoundException("Resume not found.");
+        }
+
+        return resume;
+    }
+
     private User getCurrentUser() {
 
         String email = SecurityContextHolder.getContext()
@@ -285,6 +283,6 @@ public class ResumeServiceImpl implements ResumeService {
                 .getName();
 
         return userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new UserNotFoundException("User not found."));
     }
 }

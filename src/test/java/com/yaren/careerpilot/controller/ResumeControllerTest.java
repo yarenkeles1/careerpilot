@@ -5,12 +5,15 @@ import com.yaren.careerpilot.dto.response.ResumeUploadResponse;
 import com.yaren.careerpilot.enums.ResumeStatus;
 import com.yaren.careerpilot.exception.ResumeNotFoundException;
 import com.yaren.careerpilot.service.ResumeService;
+import com.yaren.careerpilot.security.JwtUtil;
+import com.yaren.careerpilot.security.CustomUserDetailsService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -26,6 +29,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(controllers = ResumeController.class)
+@AutoConfigureMockMvc(addFilters = false)
 class ResumeControllerTest {
 
     @Autowired
@@ -33,6 +37,12 @@ class ResumeControllerTest {
 
     @MockitoBean
     private ResumeService resumeService;
+
+    @MockitoBean
+    private JwtUtil jwtUtil;
+
+    @MockitoBean
+    private CustomUserDetailsService customUserDetailsService;
 
     @Test
     void uploadResume_ShouldReturnCreated_WhenFileIsValid() throws Exception {

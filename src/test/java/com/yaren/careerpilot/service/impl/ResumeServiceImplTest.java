@@ -4,10 +4,14 @@ import com.yaren.careerpilot.dto.request.ResumeUploadRequest;
 import com.yaren.careerpilot.dto.response.ResumeResponse;
 import com.yaren.careerpilot.dto.response.ResumeUploadResponse;
 import com.yaren.careerpilot.entity.Resume;
+import com.yaren.careerpilot.entity.User;
 import com.yaren.careerpilot.enums.ResumeStatus;
 import com.yaren.careerpilot.exception.*;
 import com.yaren.careerpilot.repository.ResumeRepository;
+import com.yaren.careerpilot.repository.UserRepository;
 import com.yaren.careerpilot.service.FileStorageService;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -15,6 +19,9 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.util.List;
 import java.util.Optional;
@@ -31,8 +38,34 @@ class ResumeServiceImplTest {
     @Mock
     private FileStorageService fileStorageService;
 
+    @Mock
+    private UserRepository userRepository;
+
     @InjectMocks
     private ResumeServiceImpl resumeService;
+
+    private User testUser;
+
+    @BeforeEach
+    void setUpSecurityContext() {
+
+        testUser = new User();
+        testUser.setId(1L);
+        testUser.setEmail("yaren@test.com");
+
+        Authentication authentication =
+                new UsernamePasswordAuthenticationToken(testUser.getEmail(), null);
+
+        SecurityContextHolder.getContext().setAuthentication(authentication);
+
+        lenient().when(userRepository.findByEmail("yaren@test.com"))
+                .thenReturn(Optional.of(testUser));
+    }
+
+    @AfterEach
+    void clearSecurityContext() {
+        SecurityContextHolder.clearContext();
+    }
 
     @Test
     void getResumeById_ShouldReturnResumeResponse_WhenResumeExists() {
@@ -40,6 +73,7 @@ class ResumeServiceImplTest {
         Resume resume = new Resume();
         resume.setId(1L);
         resume.setFileName("java-cv.pdf");
+        resume.setUser(testUser);
 
         when(resumeRepository.findById(1L))
                 .thenReturn(Optional.of(resume));
@@ -66,37 +100,58 @@ class ResumeServiceImplTest {
     }
 
     @Test
+    void getResumeById_ShouldThrowException_WhenResumeBelongsToAnotherUser() {
+
+        User anotherUser = new User();
+        anotherUser.setId(2L);
+        anotherUser.setEmail("other@test.com");
+
+        Resume resume = new Resume();
+        resume.setId(1L);
+        resume.setFileName("java-cv.pdf");
+        resume.setUser(anotherUser);
+
+        when(resumeRepository.findById(1L))
+                .thenReturn(Optional.of(resume));
+
+        assertThrows(
+                ResumeNotFoundException.class,
+                () -> resumeService.getResumeById(1L)
+        );
+    }
+
+    @Test
     void getAllResumes_ShouldReturnResumeResponseList_WhenResumesExist() {
 
         Resume resume1 = new Resume();
         resume1.setId(1L);
         resume1.setFileName("cv1.pdf");
+        resume1.setUser(testUser);
 
         Resume resume2 = new Resume();
         resume2.setId(2L);
         resume2.setFileName("cv2.pdf");
+        resume2.setUser(testUser);
 
-        when(resumeRepository.findAll())
+        when(resumeRepository.findByUserId(1L))
                 .thenReturn(List.of(resume1, resume2));
 
         List<ResumeResponse> responses =
                 resumeService.getAllResumes();
 
         assertEquals(2, responses.size());
-
         assertEquals(1L, responses.get(0).getId());
         assertEquals("cv1.pdf", responses.get(0).getFileName());
-
         assertEquals(2L, responses.get(1).getId());
         assertEquals("cv2.pdf", responses.get(1).getFileName());
 
-        verify(resumeRepository).findAll();
+        verify(resumeRepository).findByUserId(1L);
     }
 
     @Test
     void getAllResumes_ShouldReturnEmptyList_WhenNoResumesExist() {
 
-        when(resumeRepository.findAll())
+        when(resumeRepository.findByUserId(1L))
                 .thenReturn(List.of());
 
         List<ResumeResponse> responses =
@@ -104,17 +159,17 @@ class ResumeServiceImplTest {
 
         assertEquals(0, responses.size());
 
-        verify(resumeRepository).findAll();
+        verify(resumeRepository).findByUserId(1L);
     }
 
     @Test
     void deleteResume_ShouldDeleteResume_WhenResumeExists() {
 
         Resume resume = new Resume();
-
         resume.setId(1L);
         resume.setFileName("cv.pdf");
         resume.setFilePath("uploads/cv.pdf");
+        resume.setUser(testUser);
 
         when(resumeRepository.findById(1L))
                 .thenReturn(Optional.of(resume));
@@ -137,9 +192,7 @@ class ResumeServiceImplTest {
         );
 
         verify(resumeRepository).findById(999L);
-
-        verify(resumeRepository, never())
-                .delete(any(Resume.class));
+        verify(resumeRepository, never()).delete(any(Resume.class));
     }
 
     @Test
@@ -148,33 +201,33 @@ class ResumeServiceImplTest {
         Resume resume1 = new Resume();
         resume1.setId(1L);
         resume1.setFileName("java-cv.pdf");
+        resume1.setUser(testUser);
 
         Resume resume2 = new Resume();
         resume2.setId(2L);
         resume2.setFileName("java-backend-cv.pdf");
+        resume2.setUser(testUser);
 
-        when(resumeRepository.findByFileNameContainingIgnoreCase("java"))
+        when(resumeRepository.findByUserIdAndFileNameContainingIgnoreCase(1L, "java"))
                 .thenReturn(List.of(resume1, resume2));
 
         List<ResumeResponse> responses =
                 resumeService.searchResumes("java");
 
         assertEquals(2, responses.size());
-
         assertEquals(1L, responses.get(0).getId());
         assertEquals("java-cv.pdf", responses.get(0).getFileName());
-
         assertEquals(2L, responses.get(1).getId());
         assertEquals("java-backend-cv.pdf", responses.get(1).getFileName());
 
         verify(resumeRepository)
-                .findByFileNameContainingIgnoreCase("java");
+                .findByUserIdAndFileNameContainingIgnoreCase(1L, "java");
     }
 
     @Test
     void searchResumes_ShouldReturnEmptyList_WhenNoResumeMatches() {
 
-        when(resumeRepository.findByFileNameContainingIgnoreCase("python"))
+        when(resumeRepository.findByUserIdAndFileNameContainingIgnoreCase(1L, "python"))
                 .thenReturn(List.of());
 
         List<ResumeResponse> responses =
@@ -183,16 +236,14 @@ class ResumeServiceImplTest {
         assertEquals(0, responses.size());
 
         verify(resumeRepository)
-                .findByFileNameContainingIgnoreCase("python");
+                .findByUserIdAndFileNameContainingIgnoreCase(1L, "python");
     }
+
     @Test
     void uploadResume_ShouldUploadResume_WhenFileIsValid() {
 
         MockMultipartFile file = new MockMultipartFile(
-                "file",
-                "cv.pdf",
-                "application/pdf",
-                "test resume content".getBytes()
+                "file", "cv.pdf", "application/pdf", "test resume content".getBytes()
         );
 
         ResumeUploadRequest request = new ResumeUploadRequest();
@@ -203,6 +254,7 @@ class ResumeServiceImplTest {
         savedResume.setFileName("cv.pdf");
         savedResume.setFilePath("uploads/test-cv.pdf");
         savedResume.setStatus(ResumeStatus.UPLOADED);
+        savedResume.setUser(testUser);
 
         when(resumeRepository.save(any(Resume.class)))
                 .thenReturn(savedResume);
@@ -221,10 +273,7 @@ class ResumeServiceImplTest {
     void uploadResume_ShouldUploadResume_WhenPdfFileIsValid() {
 
         MockMultipartFile file = new MockMultipartFile(
-                "file",
-                "cv.pdf",
-                "application/pdf",
-                "test resume content".getBytes()
+                "file", "cv.pdf", "application/pdf", "test resume content".getBytes()
         );
 
         ResumeUploadRequest request = new ResumeUploadRequest();
@@ -235,6 +284,7 @@ class ResumeServiceImplTest {
         savedResume.setFileName("cv.pdf");
         savedResume.setFilePath("uploads/test.pdf");
         savedResume.setStatus(ResumeStatus.UPLOADED);
+        savedResume.setUser(testUser);
 
         when(resumeRepository.save(any(Resume.class)))
                 .thenReturn(savedResume);
@@ -253,8 +303,7 @@ class ResumeServiceImplTest {
     void uploadResume_ShouldUploadResume_WhenDocxFileIsValid() {
 
         MockMultipartFile file = new MockMultipartFile(
-                "file",
-                "cv.docx",
+                "file", "cv.docx",
                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                 "test docx content".getBytes()
         );
@@ -267,6 +316,7 @@ class ResumeServiceImplTest {
         savedResume.setFileName("cv.docx");
         savedResume.setFilePath("uploads/test.docx");
         savedResume.setStatus(ResumeStatus.UPLOADED);
+        savedResume.setUser(testUser);
 
         when(resumeRepository.save(any(Resume.class)))
                 .thenReturn(savedResume);
@@ -285,10 +335,7 @@ class ResumeServiceImplTest {
     void uploadResume_ShouldThrowException_WhenFileIsEmpty() {
 
         MockMultipartFile file = new MockMultipartFile(
-                "file",
-                "cv.pdf",
-                "application/pdf",
-                new byte[0]
+                "file", "cv.pdf", "application/pdf", new byte[0]
         );
 
         ResumeUploadRequest request = new ResumeUploadRequest();
@@ -299,8 +346,7 @@ class ResumeServiceImplTest {
                 () -> resumeService.uploadResume(request)
         );
 
-        verify(resumeRepository, never())
-                .save(any(Resume.class));
+        verify(resumeRepository, never()).save(any(Resume.class));
     }
 
     @Test
@@ -314,18 +360,14 @@ class ResumeServiceImplTest {
                 () -> resumeService.uploadResume(request)
         );
 
-        verify(resumeRepository, never())
-                .save(any(Resume.class));
+        verify(resumeRepository, never()).save(any(Resume.class));
     }
 
     @Test
     void uploadResume_ShouldThrowException_WhenFileExtensionIsInvalid() {
 
         MockMultipartFile file = new MockMultipartFile(
-                "file",
-                "cv.txt",
-                "text/plain",
-                "test content".getBytes()
+                "file", "cv.txt", "text/plain", "test content".getBytes()
         );
 
         ResumeUploadRequest request = new ResumeUploadRequest();
@@ -336,18 +378,14 @@ class ResumeServiceImplTest {
                 () -> resumeService.uploadResume(request)
         );
 
-        verify(resumeRepository, never())
-                .save(any(Resume.class));
+        verify(resumeRepository, never()).save(any(Resume.class));
     }
 
     @Test
     void uploadResume_ShouldThrowException_WhenFileNameIsMissing() {
 
         MockMultipartFile file = new MockMultipartFile(
-                "file",
-                "",
-                "application/pdf",
-                "test content".getBytes()
+                "file", "", "application/pdf", "test content".getBytes()
         );
 
         ResumeUploadRequest request = new ResumeUploadRequest();
@@ -358,18 +396,14 @@ class ResumeServiceImplTest {
                 () -> resumeService.uploadResume(request)
         );
 
-        verify(resumeRepository, never())
-                .save(any(Resume.class));
+        verify(resumeRepository, never()).save(any(Resume.class));
     }
 
     @Test
     void uploadResume_ShouldThrowException_WhenContentTypeIsInvalid() {
 
         MockMultipartFile file = new MockMultipartFile(
-                "file",
-                "cv.pdf",
-                "text/plain",
-                "test content".getBytes()
+                "file", "cv.pdf", "text/plain", "test content".getBytes()
         );
 
         ResumeUploadRequest request = new ResumeUploadRequest();
@@ -380,18 +414,14 @@ class ResumeServiceImplTest {
                 () -> resumeService.uploadResume(request)
         );
 
-        verify(resumeRepository, never())
-                .save(any(Resume.class));
+        verify(resumeRepository, never()).save(any(Resume.class));
     }
 
     @Test
     void uploadResume_ShouldThrowException_WhenContentTypeIsMissing() {
 
         MockMultipartFile file = new MockMultipartFile(
-                "file",
-                "cv.pdf",
-                null,
-                "test content".getBytes()
+                "file", "cv.pdf", null, "test content".getBytes()
         );
 
         ResumeUploadRequest request = new ResumeUploadRequest();
@@ -402,8 +432,7 @@ class ResumeServiceImplTest {
                 () -> resumeService.uploadResume(request)
         );
 
-        verify(resumeRepository, never())
-                .save(any(Resume.class));
+        verify(resumeRepository, never()).save(any(Resume.class));
     }
 
     @Test
@@ -412,10 +441,7 @@ class ResumeServiceImplTest {
         byte[] largeFile = new byte[5 * 1024 * 1024 + 1];
 
         MockMultipartFile file = new MockMultipartFile(
-                "file",
-                "large-cv.pdf",
-                "application/pdf",
-                largeFile
+                "file", "large-cv.pdf", "application/pdf", largeFile
         );
 
         ResumeUploadRequest request = new ResumeUploadRequest();
@@ -426,8 +452,7 @@ class ResumeServiceImplTest {
                 () -> resumeService.uploadResume(request)
         );
 
-        verify(resumeRepository, never())
-                .save(any(Resume.class));
+        verify(resumeRepository, never()).save(any(Resume.class));
     }
 
     @Test
@@ -437,10 +462,7 @@ class ResumeServiceImplTest {
                 .thenReturn(Optional.empty());
 
         MockMultipartFile file = new MockMultipartFile(
-                "file",
-                "new-cv.pdf",
-                "application/pdf",
-                "new resume".getBytes()
+                "file", "new-cv.pdf", "application/pdf", "new resume".getBytes()
         );
 
         ResumeUploadRequest request = new ResumeUploadRequest();
@@ -452,9 +474,7 @@ class ResumeServiceImplTest {
         );
 
         verify(resumeRepository).findById(999L);
-
-        verify(resumeRepository, never())
-                .save(any(Resume.class));
+        verify(resumeRepository, never()).save(any(Resume.class));
     }
 
     @Test
@@ -465,15 +485,13 @@ class ResumeServiceImplTest {
         resume.setFileName("old-cv.pdf");
         resume.setFilePath("uploads/old-cv.pdf");
         resume.setStatus(ResumeStatus.UPLOADED);
+        resume.setUser(testUser);
 
         when(resumeRepository.findById(1L))
                 .thenReturn(Optional.of(resume));
 
         MockMultipartFile file = new MockMultipartFile(
-                "file",
-                "cv.txt",
-                "text/plain",
-                "invalid".getBytes()
+                "file", "cv.txt", "text/plain", "invalid".getBytes()
         );
 
         ResumeUploadRequest request = new ResumeUploadRequest();
@@ -485,9 +503,7 @@ class ResumeServiceImplTest {
         );
 
         verify(resumeRepository).findById(1L);
-
-        verify(resumeRepository, never())
-                .save(any(Resume.class));
+        verify(resumeRepository, never()).save(any(Resume.class));
     }
 
     @Test
@@ -498,6 +514,7 @@ class ResumeServiceImplTest {
         resume.setFileName("old-cv.pdf");
         resume.setFilePath("uploads/old-cv.pdf");
         resume.setStatus(ResumeStatus.UPLOADED);
+        resume.setUser(testUser);
 
         when(resumeRepository.findById(1L))
                 .thenReturn(Optional.of(resume));
@@ -535,6 +552,7 @@ class ResumeServiceImplTest {
         resume.setId(1L);
         resume.setFileName("delete-test.pdf");
         resume.setFilePath("uploads/delete-test.pdf");
+        resume.setUser(testUser);
 
         when(resumeRepository.findById(1L))
                 .thenReturn(Optional.of(resume));
@@ -550,10 +568,7 @@ class ResumeServiceImplTest {
     void uploadResume_ShouldPassFileStoragePathToRepository_WhenFileIsValid() {
 
         MockMultipartFile file = new MockMultipartFile(
-                "file",
-                "cv.pdf",
-                "application/pdf",
-                "test resume content".getBytes()
+                "file", "cv.pdf", "application/pdf", "test resume content".getBytes()
         );
 
         ResumeUploadRequest request = new ResumeUploadRequest();
@@ -577,16 +592,14 @@ class ResumeServiceImplTest {
         assertEquals("cv.pdf", savedResume.getFileName());
         assertEquals("uploads/generated-uuid.pdf", savedResume.getFilePath());
         assertEquals(ResumeStatus.UPLOADED, savedResume.getStatus());
+        assertEquals(testUser, savedResume.getUser());
     }
 
     @Test
     void uploadResume_ShouldUploadResume_WhenExtensionIsUppercase() {
 
         MockMultipartFile file = new MockMultipartFile(
-                "file",
-                "CV.PDF",
-                "application/pdf",
-                "test resume content".getBytes()
+                "file", "CV.PDF", "application/pdf", "test resume content".getBytes()
         );
 
         ResumeUploadRequest request = new ResumeUploadRequest();
@@ -599,6 +612,7 @@ class ResumeServiceImplTest {
         savedResume.setId(1L);
         savedResume.setFileName("CV.PDF");
         savedResume.setStatus(ResumeStatus.UPLOADED);
+        savedResume.setUser(testUser);
 
         when(resumeRepository.save(any(Resume.class)))
                 .thenReturn(savedResume);
@@ -617,6 +631,7 @@ class ResumeServiceImplTest {
         resume.setId(1L);
         resume.setFileName("java-cv.pdf");
         resume.setStatus(ResumeStatus.UPLOADED);
+        resume.setUser(testUser);
 
         when(resumeRepository.findById(1L))
                 .thenReturn(Optional.of(resume));
@@ -636,6 +651,7 @@ class ResumeServiceImplTest {
         resume.setId(1L);
         resume.setFileName("cv.pdf");
         resume.setFilePath("uploads/cv.pdf");
+        resume.setUser(testUser);
 
         when(resumeRepository.findById(1L))
                 .thenReturn(Optional.of(resume));
@@ -657,6 +673,7 @@ class ResumeServiceImplTest {
         resume.setFileName("old-cv.pdf");
         resume.setFilePath("uploads/old-cv.pdf");
         resume.setStatus(ResumeStatus.UPLOADED);
+        resume.setUser(testUser);
 
         when(resumeRepository.findById(1L))
                 .thenReturn(Optional.of(resume));
