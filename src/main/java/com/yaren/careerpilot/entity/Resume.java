@@ -40,4 +40,10 @@ public class Resume {
 
     @Column(columnDefinition = "TEXT")
     private String extractedText;
+
+    @OneToOne(mappedBy = "resume", cascade = CascadeType.ALL, orphanRemoval = true)
+    private ResumeAnalysis resumeAnalysis;
+
+    @OneToMany(mappedBy = "resume", cascade = CascadeType.ALL, orphanRemoval = true)
+    private java.util.List<JobMatchAnalysis> jobMatchAnalyses;
 }

@@ -13,9 +13,11 @@ public class AiConfig {
     public ChatLanguageModel chatLanguageModel() {
         return OllamaChatModel.builder()
                 .baseUrl("http://localhost:11434")
-                .modelName("qwen3:8b")
+                .modelName("hf.co/unsloth/Qwen3.5-4B-GGUF:latest")
+                .format("json")
+                .numPredict(3000)
                 .temperature(0.3)
-                .timeout(Duration.ofSeconds(300))
+                .timeout(Duration.ofMinutes(10))
                 .build();
     }
 

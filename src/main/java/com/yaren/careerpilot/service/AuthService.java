@@ -9,4 +9,8 @@ public interface AuthService {
     AuthResponse register(RegisterRequest request);
 
     AuthResponse login(LoginRequest request);
+
+    com.yaren.careerpilot.dto.response.UserInfoDto updateProfile(String email, String newName);
+
+    void deleteAccount(String email);
 }

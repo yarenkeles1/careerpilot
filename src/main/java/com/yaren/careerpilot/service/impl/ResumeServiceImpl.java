@@ -234,6 +234,7 @@ public class ResumeServiceImpl implements ResumeService {
     }
 
     @Override
+    @Transactional
     public ResumeResponse updateResume(Long id, ResumeUploadRequest request) {
 
         User user = getCurrentUser();
@@ -253,7 +254,10 @@ public class ResumeServiceImpl implements ResumeService {
         resume.setExtractedText(extractedText);
 
         resumeAnalysisRepository.findByResumeId(id)
-                .ifPresent(analysis -> resumeAnalysisRepository.delete(analysis));
+                .ifPresent(analysis -> {
+                    resumeAnalysisRepository.delete(analysis);
+                    resume.setResumeAnalysis(null);
+                });
 
         resume.setFileName(file.getOriginalFilename());
 
@@ -352,6 +356,10 @@ public class ResumeServiceImpl implements ResumeService {
                 .build();
 
         resumeAnalysisRepository.save(newAnalysis);
+        
+        resume.setStatus(ResumeStatus.COMPLETED);
+        resumeRepository.save(resume);
+        
         return aiResponse;
     }
 }

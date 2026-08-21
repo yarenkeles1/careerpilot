@@ -22,4 +22,7 @@ public class User {
 
     @Column(nullable = false)
     private String fullName;
+
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
+    private java.util.List<Resume> resumes;
 }
