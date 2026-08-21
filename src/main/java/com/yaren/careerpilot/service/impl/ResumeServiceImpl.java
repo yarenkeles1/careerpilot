@@ -1,16 +1,22 @@
 package com.yaren.careerpilot.service.impl;
 
 import com.yaren.careerpilot.dto.request.ResumeUploadRequest;
+import com.yaren.careerpilot.dto.response.ResumeAnalysisResponse;
 import com.yaren.careerpilot.dto.response.ResumeResponse;
 import com.yaren.careerpilot.dto.response.ResumeUploadResponse;
 import com.yaren.careerpilot.entity.Resume;
+import com.yaren.careerpilot.entity.ResumeAnalysis;
 import com.yaren.careerpilot.entity.User;
 import com.yaren.careerpilot.enums.ResumeStatus;
 import com.yaren.careerpilot.exception.*;
+import com.yaren.careerpilot.repository.ResumeAnalysisRepository;
 import com.yaren.careerpilot.repository.ResumeRepository;
 import com.yaren.careerpilot.repository.UserRepository;
 import com.yaren.careerpilot.service.FileStorageService;
+import com.yaren.careerpilot.service.ResumeAnalyzerAiService;
+import com.yaren.careerpilot.service.ResumeParserService;
 import com.yaren.careerpilot.service.ResumeService;
+import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -29,6 +35,12 @@ public class ResumeServiceImpl implements ResumeService {
     private final ResumeRepository resumeRepository;
 
     private final UserRepository userRepository;
+
+    private final ResumeParserService resumeParserService;
+
+    private final ResumeAnalyzerAiService aiService;
+
+    private final ResumeAnalysisRepository resumeAnalysisRepository;
 
     private static final List<String> ALLOWED_EXTENSIONS =
             List.of(".pdf", ".docx");
@@ -56,6 +68,10 @@ public class ResumeServiceImpl implements ResumeService {
         String filePath = fileStorageService.store(file);
 
         Resume resume = createResume(file, filePath, user);
+
+        String extractedText = resumeParserService.extractText(file);
+
+        resume.setExtractedText(extractedText);
 
         Resume savedResume = resumeRepository.save(resume);
 
@@ -232,6 +248,13 @@ public class ResumeServiceImpl implements ResumeService {
 
         String newFilePath = fileStorageService.store(file);
 
+        String extractedText = resumeParserService.extractText(file);
+
+        resume.setExtractedText(extractedText);
+
+        resumeAnalysisRepository.findByResumeId(id)
+                .ifPresent(analysis -> resumeAnalysisRepository.delete(analysis));
+
         resume.setFileName(file.getOriginalFilename());
 
         resume.setFilePath(newFilePath);
@@ -245,18 +268,20 @@ public class ResumeServiceImpl implements ResumeService {
         } catch (FileStorageException e) {
             log.warn("Failed to delete old physical file for resume id={}, path={}", id, oldFilePath, e);
         }
+
         return mapToResponse(updatedResume);
     }
 
     @Override
+    @Transactional
     public void deleteResume(Long id) {
         User user = getCurrentUser();
-
         Resume resume = getOwnedResumeOrThrow(id, user);
 
+        resumeAnalysisRepository.findByResumeId(id)
+                .ifPresent(analysis -> resumeAnalysisRepository.delete(analysis));
         String filePath = resume.getFilePath();
         resumeRepository.delete(resume);
-
         try {
             fileStorageService.delete(filePath);
         } catch (FileStorageException e) {
@@ -284,5 +309,49 @@ public class ResumeServiceImpl implements ResumeService {
 
         return userRepository.findByEmail(email)
                 .orElseThrow(() -> new UserNotFoundException("User not found."));
+    }
+
+    @Override
+    @Transactional
+    public ResumeAnalysisResponse analyzeResume(Long id) {
+
+        Resume resume = resumeRepository.findById(id)
+                .orElseThrow(() -> new ResumeNotFoundException("Resume not found"));
+        if (!resume.getUser().getId().equals(getCurrentUser().getId())) {
+            throw new RuntimeException("You do not have the authority to analyze this resume.");
+        }
+
+        var existingAnalysis = resumeAnalysisRepository.findByResumeId(id);
+        if (existingAnalysis.isPresent()) {
+            var analysis = existingAnalysis.get();
+            return new ResumeAnalysisResponse(
+                    analysis.getOverallScore(),
+                    analysis.getAtsScore(),
+                    analysis.getStrengths(),
+                    analysis.getWeaknesses(),
+                    analysis.getMissingKeywords(),
+                    analysis.getRecommendedRoles(),
+                    analysis.getActionableAdvice()
+            );
+        }
+        if (resume.getExtractedText() == null || resume.getExtractedText().isEmpty()) {
+            throw new RuntimeException("No readable text was found in this resume.");
+        }
+
+        ResumeAnalysisResponse aiResponse = aiService.analyzeResume(resume.getExtractedText());
+
+        ResumeAnalysis newAnalysis = ResumeAnalysis.builder()
+                .resume(resume)
+                .overallScore(aiResponse.overallScore())
+                .atsScore(aiResponse.atsScore())
+                .strengths(aiResponse.strengths())
+                .weaknesses(aiResponse.weaknesses())
+                .missingKeywords(aiResponse.missingKeywords())
+                .recommendedRoles(aiResponse.recommendedRoles())
+                .actionableAdvice(aiResponse.actionableAdvice())
+                .build();
+
+        resumeAnalysisRepository.save(newAnalysis);
+        return aiResponse;
     }
 }

@@ -1,6 +1,7 @@
 package com.yaren.careerpilot.service;
 
 import com.yaren.careerpilot.dto.request.ResumeUploadRequest;
+import com.yaren.careerpilot.dto.response.ResumeAnalysisResponse;
 import com.yaren.careerpilot.dto.response.ResumeResponse;
 import com.yaren.careerpilot.dto.response.ResumeUploadResponse;
 
@@ -19,4 +20,6 @@ public interface ResumeService {
     void deleteResume(Long id);
 
     List<ResumeResponse> searchResumes(String keyword);
+
+    ResumeAnalysisResponse analyzeResume(Long id);
 }
