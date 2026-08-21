@@ -1,4 +1,8 @@
 package com.yaren.careerpilot.service;
 
-public class JobMatchService {
+import com.yaren.careerpilot.dto.request.JobMatchRequest;
+import com.yaren.careerpilot.dto.response.JobMatchResponse;
+
+public interface JobMatchService {
+    JobMatchResponse matchJob(Long resumeId, JobMatchRequest request);
 }
